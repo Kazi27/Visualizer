@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Sound Lines</title>
+<style>
+  :root{
+    --paper:#f3f0e6; --screen:#faf8f0; --grid:#ddd8c8; --ink:#232019;
+    --blue:#3d5a99; --green:#3e8f76; --red:#c34a3a; --muted:#8b8677;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;background:#000;overflow:hidden;
+    font-family:'Iowan Old Style','Georgia',serif;}
+
+  #layout{position:fixed;top:0;left:0;right:0;bottom:64px;display:flex;}
+  #leftPanel{width:50%;height:100%;position:relative;background:var(--screen);border-right:1px solid #000;}
+  #rightPanel{width:50%;height:100%;position:relative;background:#000;}
+  #leftPanel canvas,#rightPanel canvas{position:absolute;inset:0;width:100%;height:100%;display:block;}
+
+  #drop{
+    position:fixed;inset:0;bottom:64px;z-index:5;display:flex;align-items:center;justify-content:center;
+    background:linear-gradient(to right, var(--screen) 50%, #000 50%);
+    transition:opacity .5s ease;
+  }
+  #drop.hidden{opacity:0;pointer-events:none;}
+  #dropCard{
+    background-color:#1c1a15;
+    background-image:
+      linear-gradient(rgba(243,241,234,0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(243,241,234,0.035) 1px, transparent 1px);
+    background-size:26px 26px;
+    border:1px solid #3a362c;border-radius:8px;
+    padding:44px 52px;display:flex;flex-direction:column;align-items:center;gap:18px;
+    box-shadow:0 24px 60px -24px rgba(0,0,0,0.6);
+    animation:cardIn .6s cubic-bezier(.16,1,.3,1) both;
+  }
+  @keyframes cardIn{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:translateY(0);}}
+  #dropIcon{width:72px;height:44px;}
+  #dropIcon path{stroke-dasharray:120;stroke-dashoffset:120;animation:drawIn 1.4s ease-out .2s forwards, drift 5s ease-in-out 1.6s infinite;}
+  #dropIcon path:nth-child(2){animation-delay:.35s, 1.75s;}
+  #dropIcon path:nth-child(3){animation-delay:.5s, 1.9s;}
+  @keyframes drawIn{to{stroke-dashoffset:0;}}
+  @keyframes drift{0%,100%{transform:translateY(0);}50%{transform:translateY(-1.5px);}}
+  #drop h1{font-size:clamp(24px,3.2vw,34px);font-weight:400;margin:0;color:#f3f1ea;letter-spacing:0.01em;}
+  #drop p{margin:0;color:#948f7e;font-size:13.5px;max-width:340px;text-align:center;line-height:1.55;}
+  #dropzone{
+    margin-top:6px;
+    border:none;border-radius:999px;padding:12px 38px;cursor:pointer;
+    font-size:13px;letter-spacing:0.02em;color:#1c1a15;background:var(--red);
+    transition:transform .15s ease, box-shadow .15s ease, background .15s ease;
+    box-shadow:0 6px 20px -8px rgba(195,74,58,0.6);
+  }
+  #dropzone:hover{background:#d15b49;transform:translateY(-1px);box-shadow:0 8px 24px -8px rgba(195,74,58,0.75);}
+  #dropzone.drag{background:#d15b49;transform:scale(1.03);}
+  #fileInput{display:none;}
+
+  #controls{
+    position:fixed;left:0;right:0;bottom:0;height:64px;z-index:6;
+    background:#1c1a15;border-top:1px solid #000;
+    padding:9px 22px 10px;display:none;flex-direction:column;gap:7px;justify-content:center;
+  }
+  #controls.show{display:flex;}
+  #seekRow{display:flex;align-items:center;gap:10px;color:#8b8677;font-size:11px;}
+  #seek{flex:1;-webkit-appearance:none;appearance:none;height:2px;background:#3a362c;border-radius:2px;outline:none;cursor:pointer;}
+  #seek::-webkit-slider-thumb{-webkit-appearance:none;width:11px;height:11px;border-radius:50%;background:var(--red);cursor:pointer;margin-top:-4.5px;}
+  #seek::-moz-range-thumb{width:11px;height:11px;border-radius:50%;background:var(--red);border:none;cursor:pointer;}
+  #seek::-moz-range-track{height:2px;background:#3a362c;border-radius:2px;}
+  #curTime,#durTime{width:36px;text-align:center;}
+  #hudRow{display:flex;align-items:center;gap:10px;color:#f3f1ea;font-size:12px;}
+  #controls button{background:none;border:1px solid #4a4638;color:#f3f1ea;border-radius:3px;padding:5px 11px;font-size:12px;cursor:pointer;font-family:inherit;white-space:nowrap;}
+  #controls button:hover{border-color:var(--red);color:var(--red);}
+  #trackName{color:#8b8677;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:260px;}
+</style>
+</head>
+<body>
+
+<div id="layout">
+  <div id="leftPanel"><canvas id="canvasL"></canvas></div>
+  <div id="rightPanel"><canvas id="canvasR"></canvas></div>
+</div>
+
+<div id="drop">
+  <div id="dropCard">
+    <svg id="dropIcon" viewBox="0 0 72 44" fill="none">
+      <path d="M2 12 Q18 3 36 12 T70 12" stroke="#3d5a99" stroke-width="1.6" stroke-linecap="round"/>
+      <path d="M2 22 Q18 15 36 22 T70 22" stroke="#3e8f76" stroke-width="1.8" stroke-linecap="round"/>
+      <path d="M2 32 Q18 40 36 32 T70 32" stroke="#c34a3a" stroke-width="1.8" stroke-linecap="round"/>
+    </svg>
+    <h1>Visualizer</h1>
+    <p>Deconstruct audio, any common format.</p>
+    <div id="dropzone">choose</div>
+    <input type="file" id="fileInput" accept="audio/*,video/*">
+  </div>
+</div>
+
+<div id="controls">
+  <div id="seekRow">
+    <span id="curTime">0:00</span>
+    <input type="range" id="seek" min="0" max="100" value="0" step="0.1">
+    <span id="durTime">0:00</span>
+  </div>
+  <div id="hudRow">
+    <button id="playPause">pause</button>
+    <button id="changeFile">change file</button>
+    <span id="trackName"></span>
+  </div>
+</div>
+
+<script>
+const canvasL = document.getElementById('canvasL');
+const canvasR = document.getElementById('canvasR');
+const ctxL = canvasL.getContext('2d');
+const ctxR = canvasR.getContext('2d');
+const leftPanel = document.getElementById('leftPanel');
+const rightPanel = document.getElementById('rightPanel');
+const dropEl = document.getElementById('drop');
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+const controls = document.getElementById('controls');
+const playPauseBtn = document.getElementById('playPause');
+const changeFileBtn = document.getElementById('changeFile');
+const trackNameEl = document.getElementById('trackName');
+const seek = document.getElementById('seek');
+const curTimeEl = document.getElementById('curTime');
+const durTimeEl = document.getElementById('durTime');
+
+let WL,HL,DPRL,WR,HR,DPRR;
+function resize(){
+  DPRL = Math.min(window.devicePixelRatio||1,2);
+  let r = leftPanel.getBoundingClientRect();
+  WL=r.width; HL=r.height;
+  canvasL.width=WL*DPRL; canvasL.height=HL*DPRL;
+  canvasL.style.width=WL+'px'; canvasL.style.height=HL+'px';
+  ctxL.setTransform(DPRL,0,0,DPRL,0,0);
+
+  DPRR = Math.min(window.devicePixelRatio||1,2);
+  r = rightPanel.getBoundingClientRect();
+  WR=r.width; HR=r.height;
+  canvasR.width=WR*DPRR; canvasR.height=HR*DPRR;
+  canvasR.style.width=WR+'px'; canvasR.style.height=HR+'px';
+  ctxR.setTransform(DPRR,0,0,DPRR,0,0);
+}
+window.addEventListener('resize', ()=>{ resize(); buildRope(); });
+resize();
+
+function fmt(s){ if(!isFinite(s)||isNaN(s)) return '0:00'; const m=Math.floor(s/60), sec=Math.floor(s%60); return m+':'+String(sec).padStart(2,'0'); }
+
+// ---------- Audio (accepts audio OR video; video stays invisible) ----------
+let audioCtx, analyser, freqData, sourceNode, mediaEl;
+const FFT_SIZE = 2048;
+let seeking = false;
+
+function initMedia(file){
+  if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+  if(mediaEl){ mediaEl.pause(); URL.revokeObjectURL(mediaEl.src); mediaEl.remove(); }
+
+  const isVideo = file.type.startsWith('video');
+  mediaEl = document.createElement(isVideo ? 'video' : 'audio');
+  mediaEl.src = URL.createObjectURL(file);
+  mediaEl.crossOrigin = 'anonymous';
+  mediaEl.style.display = 'none';
+  document.body.appendChild(mediaEl);
+
+  sourceNode = audioCtx.createMediaElementSource(mediaEl);
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize = FFT_SIZE;
+  analyser.smoothingTimeConstant = 0.32;
+  freqData = new Uint8Array(analyser.frequencyBinCount);
+  sourceNode.connect(analyser);
+  analyser.connect(audioCtx.destination);
+
+  mediaEl.addEventListener('loadedmetadata', ()=>{ durTimeEl.textContent=fmt(mediaEl.duration); seek.max=mediaEl.duration||100; });
+  mediaEl.addEventListener('timeupdate', ()=>{
+    if(seeking) return;
+    curTimeEl.textContent = fmt(mediaEl.currentTime);
+    seek.value = mediaEl.currentTime;
+  });
+  mediaEl.addEventListener('ended', ()=>{ playPauseBtn.textContent='play'; });
+  mediaEl.addEventListener('error', ()=>{
+    trackNameEl.textContent = "couldn't play that file — codec may not be supported in this browser";
+    dropEl.classList.remove('hidden');
+    controls.classList.remove('show');
+  });
+
+  mediaEl.play(); audioCtx.resume();
+  trackNameEl.textContent = file.name.replace(/\.[^/.]+$/,'');
+  controls.classList.add('show'); playPauseBtn.textContent='pause';
+  dropEl.classList.add('hidden');
+  resetHistories(); buildRope();
+}
+const KNOWN_EXT = /\.(mp3|wav|m4a|aac|ogg|oga|flac|mp4|m4v|mov|webm)$/i;
+function handleFile(file){
+  if(!file) return;
+  const looksAudioVideo = file.type.startsWith('audio') || file.type.startsWith('video');
+  const looksKnownExt = KNOWN_EXT.test(file.name);
+  if(!looksAudioVideo && !looksKnownExt){
+    dropzone.textContent = "that doesn't look like audio or video — try another file";
+    setTimeout(()=>{ dropzone.textContent = 'choose'; }, 2500);
+    return;
+  }
+  initMedia(file);
+}
+dropzone.addEventListener('click', ()=>fileInput.click());
+fileInput.addEventListener('change', e=>handleFile(e.target.files[0]));
+['dragenter','dragover'].forEach(evt=>window.addEventListener(evt,e=>{e.preventDefault();dropzone.classList.add('drag');}));
+['dragleave','drop'].forEach(evt=>window.addEventListener(evt,e=>{e.preventDefault();dropzone.classList.remove('drag');}));
+window.addEventListener('drop', e=>{ e.preventDefault(); handleFile(e.dataTransfer.files[0]); });
+
+playPauseBtn.addEventListener('click', ()=>{
+  if(!mediaEl) return;
+  if(mediaEl.paused){ mediaEl.play(); playPauseBtn.textContent='pause'; }
+  else{ mediaEl.pause(); playPauseBtn.textContent='play'; }
+});
+changeFileBtn.addEventListener('click', ()=>fileInput.click());
+seek.addEventListener('input', ()=>{ seeking=true; curTimeEl.textContent=fmt(parseFloat(seek.value)); });
+seek.addEventListener('change', ()=>{ if(mediaEl) mediaEl.currentTime=parseFloat(seek.value); seeking=false; });
+
+function bandEnergy(data, from, to){ let s=0,n=0; for(let i=from;i<to && i<data.length;i++){s+=data[i];n++;} return n? s/n : 0; }
+
+let energyHistory=[], lastBeatTime=0, beatPulse=0, beatImpulseX=0.5;
+function detectBeat(bassEnergy, now){
+  energyHistory.push(bassEnergy);
+  if(energyHistory.length>43) energyHistory.shift();
+  const avg = energyHistory.reduce((a,b)=>a+b,0)/energyHistory.length;
+  const variance = energyHistory.reduce((a,b)=>a+(b-avg)*(b-avg),0)/energyHistory.length;
+  const threshold = 1.45 - 0.002*variance;
+  if(bassEnergy>avg*threshold && bassEnergy>28 && now-lastBeatTime>180){ lastBeatTime=now; beatImpulseX=0.15+Math.random()*0.7; return true; }
+  return false;
+}
+
+// ---------- LEFT: scrolling monitor lanes ----------
+const HIST_LEN = 220;
+let hTreble=[], hMid=[], hBass=[], hBeat=[];
+let quietFrames=0, kaTriggered=false, endBlend=0; // declared here so resetHistories() can safely reference them at initial load
+function resetHistories(){
+  hTreble=new Array(HIST_LEN).fill(0); hMid=new Array(HIST_LEN).fill(0); hBass=new Array(HIST_LEN).fill(0); hBeat=new Array(HIST_LEN).fill(0);
+  quietFrames=0; kaTriggered=false; endBlend=0; // new file — KA state starts fresh
+}
+resetHistories();
+
+function drawGrid(){
+  ctxL.strokeStyle = '#ddd8c8'; ctxL.lineWidth = 1;
+  const step=38; ctxL.beginPath();
+  for(let x=0;x<WL;x+=step){ ctxL.moveTo(x+0.5,0); ctxL.lineTo(x+0.5,HL); }
+  for(let y=0;y<HL;y+=step){ ctxL.moveTo(0,y+0.5); ctxL.lineTo(WL,y+0.5); }
+  ctxL.stroke();
+}
+function drawLaneLabel(text,laneMidY){ ctxL.fillStyle='#8b8677'; ctxL.font='11px Georgia, serif'; ctxL.fillText(text,14,laneMidY+4); }
+
+function convergeEase(edgeFrac){
+  const edgeStart = 0.76; // wider runway so a loud moment near the edge arcs into the merge instead of stabbing into it
+  if(edgeFrac<edgeStart) return 0;
+  const t = (edgeFrac-edgeStart)/(1-edgeStart);
+  return t*t*(3-2*t); // smoothstep
+}
+
+// direction reversed: newest data enters at the LEFT edge and ages toward the RIGHT,
+// where it gets absorbed into the convergence — trades a few seconds of lag at the
+// convergence point (it now shows recent-past state, not this instant) for a flow
+// that reads left-to-right into the merge instead of erupting out of it.
+function laneXY(i, laneMidY, laneAmp, centerY, historyVal){
+  const frac = i/(HIST_LEN-1);           // 0 = oldest, 1 = newest (array order unchanged)
+  const screenFrac = 1 - frac;           // newest(1) -> screenFrac 0 (left); oldest(0) -> screenFrac 1 (right, at convergence)
+  const ease = convergeEase(screenFrac);
+  const midY = laneMidY + (centerY-laneMidY)*ease;
+  const amp = laneAmp*(1-ease*0.78);
+  const x = screenFrac*WL;
+  return {x, y: midY - historyVal*amp, midY, amp};
+}
+
+function strokeLane(history, laneMidY, laneAmp, color, lineWidth, glow, centerY){
+  ctxL.beginPath();
+  for(let i=0;i<history.length;i++){
+    const p = laneXY(i, laneMidY, laneAmp, centerY, history[i]);
+    if(i===0) ctxL.moveTo(p.x,p.y); else ctxL.lineTo(p.x,p.y);
+  }
+  ctxL.strokeStyle=color; ctxL.lineWidth=lineWidth+glow*2.2;
+  ctxL.lineJoin='round'; ctxL.lineCap='round';
+  ctxL.stroke();
+}
+// smooth curved variant — used for vocal/mid to give it a distinct soft texture vs treble's sharp zigzags
+function strokeLaneSmooth(history, laneMidY, laneAmp, color, lineWidth, glow, centerY){
+  const pts = history.map((v,i)=>laneXY(i, laneMidY, laneAmp, centerY, v));
+  ctxL.beginPath();
+  ctxL.moveTo(pts[0].x, pts[0].y);
+  for(let i=1;i<pts.length-1;i++){
+    const mx=(pts[i].x+pts[i+1].x)/2, my=(pts[i].y+pts[i+1].y)/2;
+    ctxL.quadraticCurveTo(pts[i].x,pts[i].y,mx,my);
+  }
+  ctxL.lineTo(pts[pts.length-1].x, pts[pts.length-1].y);
+  ctxL.strokeStyle=color; ctxL.lineWidth=lineWidth+glow*2.2;
+  ctxL.lineJoin='round'; ctxL.lineCap='round';
+  ctxL.stroke();
+}
+function fillLane(history, laneMidY, laneAmp, color, glow, centerY){
+  const top = history.map((v,i)=>laneXY(i, laneMidY, laneAmp, centerY, v));
+  const bot = history.map((v,i)=>laneXY(i, laneMidY, laneAmp, centerY, -v));
+  ctxL.beginPath();
+  ctxL.moveTo(top[0].x, top[0].y);
+  for(let i=1;i<top.length;i++) ctxL.lineTo(top[i].x, top[i].y);
+  for(let i=bot.length-1;i>=0;i--) ctxL.lineTo(bot[i].x, bot[i].y);
+  ctxL.closePath();
+  ctxL.fillStyle=color; ctxL.globalAlpha=0.88; ctxL.fill(); ctxL.globalAlpha=1;
+  ctxL.strokeStyle=color; ctxL.lineWidth=1.3+glow*2; ctxL.stroke();
+}
+
+// ---------- RIGHT: plain elastic rope ----------
+function makeNoise(seed){
+  let s=seed;
+  function rand(){ s=(s*16807)%2147483647; return (s-1)/2147483646; }
+  const grad=[]; for(let i=0;i<256;i++) grad.push(rand()*Math.PI*2);
+  return function(x,y){
+    const xi=Math.floor(x)&255, yi=Math.floor(y)&255;
+    const xf=x-Math.floor(x), yf=y-Math.floor(y);
+    function d(ix,iy,x,y){ const a=grad[(ix+iy*57)&255]; return Math.cos(a)*x+Math.sin(a)*y; }
+    const n00=d(xi,yi,xf,yf), n10=d(xi+1,yi,xf-1,yf), n01=d(xi,yi+1,xf,yf-1), n11=d(xi+1,yi+1,xf-1,yf-1);
+    const u=xf*xf*(3-2*xf), v=yf*yf*(3-2*yf);
+    return (n00*(1-u)+n10*u)*(1-v)+(n01*(1-u)+n11*u)*v;
+  };
+}
+const N=140;
+let ropeY, ropeV, ropeNoise, ropePhase;
+function buildRope(){ ropeY=new Float32Array(N); ropeV=new Float32Array(N); ropeNoise=makeNoise(Math.floor(Math.random()*99999)+1); ropePhase=Math.random()*1000; }
+buildRope();
+
+function bezPath(ctx2, pts){
+  ctx2.beginPath(); ctx2.moveTo(pts[0].x,pts[0].y);
+  for(let i=1;i<pts.length-1;i++){ const mx=(pts[i].x+pts[i+1].x)/2, my=(pts[i].y+pts[i+1].y)/2; ctx2.quadraticCurveTo(pts[i].x,pts[i].y,mx,my); }
+  const last=pts[pts.length-1]; ctx2.lineTo(last.x,last.y);
+}
+
+// ---------- ending "K" (left panel) / "A" (right panel) — draw independently but in sync ----------
+const kStroke=[{x:-0.21,y:-1.0},{x:-0.21,y:1.0},{x:-0.21,y:0.0},{x:0.21,y:-1.0},{x:-0.21,y:0.0},{x:0.21,y:1.0}];
+const aStroke=[{x:-0.26,y:1.0},{x:0.0,y:-1.0},{x:0.26,y:1.0},{x:0.10,y:-0.02},{x:-0.10,y:-0.02}];
+function cumLen(stroke){ const c=[0]; for(let i=1;i<stroke.length;i++){ const a=stroke[i-1],b=stroke[i]; c.push(c[i-1]+Math.hypot(b.x-a.x,b.y-a.y)); } return c; }
+const kLenCum=cumLen(kStroke), aLenCum=cumLen(aStroke);
+const kTotalLen=kLenCum[kLenCum.length-1], aTotalLen=aLenCum[aLenCum.length-1];
+
+function drawStroke(ctx2, stroke, lenCum, totalLen, frac, cx, cy, scale, alpha, color){
+  const targetLen=totalLen*frac; const pts=[];
+  for(let i=0;i<stroke.length;i++){
+    if(lenCum[i]<=targetLen){ pts.push(stroke[i]); }
+    else{ const a=stroke[i-1],b=stroke[i]; const segLen=lenCum[i]-lenCum[i-1]; const t2=segLen>0?(targetLen-lenCum[i-1])/segLen:0; pts.push({x:a.x+(b.x-a.x)*t2,y:a.y+(b.y-a.y)*t2}); break; }
+  }
+  if(pts.length<2) return;
+  ctx2.beginPath(); ctx2.moveTo(cx+pts[0].x*scale, cy+pts[0].y*scale);
+  for(let i=1;i<pts.length;i++) ctx2.lineTo(cx+pts[i].x*scale, cy+pts[i].y*scale);
+  ctx2.strokeStyle=color; ctx2.globalAlpha=alpha; ctx2.lineWidth=4;
+  ctx2.lineJoin='round'; ctx2.lineCap='round'; ctx2.stroke(); ctx2.globalAlpha=1;
+}
+
+let ampEnvelope=0, prevLoud=0, vocalEnvelope=0, trebleEnvelope=0, t=0, wasPlaying=false;
+let trebleSpringY=0, trebleSpringV=0; // treble gets real spring physics — bouncy/overshooting, distinct from vocal's direct trace
+
+function draw(){
+  requestAnimationFrame(draw);
+  t += 0.0035;
+
+  let bass=0, mid=0, treble=0, overall=0, playing=false;
+  if(analyser && mediaEl && !mediaEl.paused){
+    playing=true;
+    analyser.getByteFrequencyData(freqData);
+    bass = bandEnergy(freqData,1,10);
+    mid  = bandEnergy(freqData,10,90);
+    treble = bandEnergy(freqData,90,320);
+    overall = bandEnergy(freqData,1,320);
+    if(detectBeat(bass, performance.now())) beatPulse=1;
+  }
+  beatPulse *= 0.88;
+
+  const rawLoud = overall/255;
+  if(rawLoud>ampEnvelope) ampEnvelope += (rawLoud-ampEnvelope)*0.62; else ampEnvelope += (rawLoud-ampEnvelope)*0.11;
+  // suddenness only counts when BOTH this frame and the last were actually playing —
+  // otherwise resuming from pause reads as a fake instant jump from silence and fires a false spike
+  const jump = (playing && wasPlaying) ? Math.max(0, rawLoud-prevLoud) : 0;
+  prevLoud = rawLoud;
+  wasPlaying = playing;
+  const suddenness = Math.min(1, jump*10);
+  const bassLevel = Math.min(1.4, Math.pow(ampEnvelope,0.58) + suddenness*1.0); // most reactive yet
+
+  const midRaw=mid/255;
+  vocalEnvelope += ((Math.pow(midRaw,0.5)) - vocalEnvelope) * (playing?0.60:0.08); // more reactive again
+
+  const trebRaw=treble/255;
+  trebleEnvelope += ((Math.pow(trebRaw,0.45)) - trebleEnvelope) * (playing?0.65:0.08);
+  // treble's spring: chases trebleEnvelope with actual physics (overshoot + oscillation), not a 1:1 trace —
+  // this is what makes it feel "fluidy" and physically distinct from vocal/mid's direct line
+  const tSpringForce = (trebleEnvelope - trebleSpringY) * 0.55;
+  trebleSpringV = (trebleSpringV + tSpringForce) * 0.72;
+  trebleSpringY += trebleSpringV;
+
+  hTreble.push(trebleSpringY); if(hTreble.length>HIST_LEN) hTreble.shift();
+  hMid.push(vocalEnvelope); if(hMid.length>HIST_LEN) hMid.shift();
+  hBass.push(bassLevel); if(hBass.length>HIST_LEN) hBass.shift();
+  hBeat.push(beatPulse); if(hBeat.length>HIST_LEN) hBeat.shift();
+  // pausing does NOT freeze or fast-fade anything — whatever's already queued keeps flowing
+  // through naturally and feeding the white line, exactly like during playback. KA only cares
+  // about the RESULT of that: once the rope itself has actually gone still.
+
+  // whatever is literally touching the convergence point right now (index 0 = oldest = at the right edge
+  // after the direction flip) is what drives the rope — so the white line only ever shows what's actually
+  // been funneled in, never live audio the graphs haven't caught up to yet.
+  const convergingBass = hBass[0];
+  const convergingTreble = hTreble[0];
+  const convergingBeat = hBeat[0];
+
+  // KA is a paused+stabilized indicator: it only appears once you're paused AND the rope's
+  // own input has genuinely gone still (not tied to song position at all). Resuming play
+  // cancels it immediately and it fades back out.
+  const ropeActivity = convergingBass + convergingTreble;
+  if(!playing && ropeActivity < 0.04){ quietFrames++; }
+  else { quietFrames = 0; }
+  if(playing){ kaTriggered = false; }
+  else if(quietFrames > 30){ kaTriggered = true; } // ~0.5s of the rope actually sitting still while paused
+  endBlend += ((kaTriggered?1:0) - endBlend) * 0.05; // smooth fade both in and out
+
+  // the exact pixel y each lane's line actually touches at the boundary (edgeFrac=1, so ease=1,
+  // amp = laneAmp*(1-0.78) — matches laneXY's math exactly) — averaged across all three so the
+  // rope's tether point matches where the graphs visually meet, not just one of them.
+  const edgeAmp = (HL/3)*0.5*(1-0.78);
+  const convergenceOffset = -( hTreble[0]*edgeAmp + hMid[0]*edgeAmp + hBass[0]*edgeAmp ) / 3;
+
+  // ===== LEFT: monitor =====
+  ctxL.fillStyle='#faf8f0'; ctxL.fillRect(0,0,WL,HL);
+  drawGrid();
+  const laneH = HL/3;
+  const lane1Mid=laneH*0.5, lane2Mid=laneH*1.5, lane3Mid=laneH*2.5; // lane2 = HL*0.5 exactly, same height as the right panel's centerline
+  strokeLane(hTreble, lane1Mid, laneH*0.5, '#3d5a99', 2.0, trebleEnvelope, lane2Mid);
+  drawLaneLabel('treble / highs', lane1Mid);
+  strokeLaneSmooth(hMid, lane2Mid, laneH*0.5, '#3e8f76', 2.4, vocalEnvelope, lane2Mid);
+  drawLaneLabel('vocal / mid', lane2Mid);
+  strokeLane(hBass, lane3Mid, laneH*0.5, '#c34a3a', 2.0, beatPulse, lane2Mid);
+  drawLaneLabel('bass / beat', lane3Mid);
+
+  // ===== RIGHT: elastic rope — driven entirely by the converging values above =====
+  const jitterFreq = 0.55 + convergingTreble*2.0;
+  const springK = 0.10 + convergingTreble*0.05;
+  const damping = playing ? 0.90 : 0.82;
+  const baseAmp = convergingBass*380; // no constant floor — truly zero input means truly zero motion
+  const impulse = convergingBeat>0.03 ? (frac)=>{ const d=Math.abs(frac-beatImpulseX); return Math.exp(-d*d*30)*convergingBeat*300; } : null;
+
+  for(let i=0;i<N;i++){
+    const frac=i/(N-1);
+    let target = ropeNoise(frac*jitterFreq, t*1.2+ropePhase) * baseAmp;
+    if(impulse) target += impulse(frac);
+    const f=(target-ropeY[i])*springK;
+    ropeV[i]=(ropeV[i]+f)*damping;
+    ropeY[i]+=ropeV[i];
+  }
+  // taper the tether across the first several points for a smooth lead-in — but point 0 itself
+  // must be a full, exact match (w=1), never partial, or the seam can still drift off-center
+  for(let i=0;i<10 && i<N;i++){
+    const w = 1 - i/10;
+    ropeY[i] = ropeY[i]*(1-w) + convergenceOffset*w;
+  }
+  ropeY[0] = convergenceOffset; // belt-and-suspenders: guarantee exact match regardless of the loop's rounding
+
+  ctxR.fillStyle='#000'; ctxR.fillRect(0,0,WR,HR);
+  const midYR = HR/2;
+  const lineAlpha = 1; // rope always stays visible — KA draws on top of it, doesn't replace it
+  if(lineAlpha>0.02){
+    const pts=[];
+    for(let i=0;i<N;i++){ pts.push({x:(i/(N-1))*WR, y:midYR+ropeY[i]}); }
+    ctxR.strokeStyle='#f3f1ea'; ctxR.lineWidth=2.2+convergingBeat*2.6;
+    ctxR.lineJoin='round'; ctxR.lineCap='round';
+    ctxR.globalAlpha=lineAlpha;
+    ctxR.shadowColor=convergingBeat>0.15?'rgba(232,82,63,0.5)':'transparent'; ctxR.shadowBlur=convergingBeat*14;
+    bezPath(ctxR,pts); ctxR.stroke();
+    ctxR.shadowBlur=0; ctxR.globalAlpha=1;
+  }
+  ctxR.fillStyle='#8b8677'; ctxR.font='11px Georgia, serif';
+  ctxR.fillText('overall / combined', 14, midYR-38); // label stays put regardless of the rope's own fade state
+  if(endBlend>0.01){
+    const kaFrac = Math.min(1,endBlend*1.15);
+    // both letters sit right at the panel divide (not centered in their own halves) so together they read as one "KA" centered on the whole screen
+    const scaleL = Math.min(WL,HL)*0.15;
+    drawStroke(ctxL, kStroke, kLenCum, kTotalLen, kaFrac, WL*0.84, HL*0.5, scaleL, 1, '#232019');
+    const scaleR = Math.min(WR,HR)*0.15;
+    drawStroke(ctxR, aStroke, aLenCum, aTotalLen, kaFrac, WR*0.16, midYR, scaleR, 1, '#f3f1ea');
+  }
+}
+draw();
+</script>
+</body>
+</html>
