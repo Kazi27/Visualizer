@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <title>Sound Lines</title>
 <style>
   :root{
@@ -10,17 +11,29 @@
   }
   *{box-sizing:border-box;}
   html,body{margin:0;height:100%;background:#000;overflow:hidden;
-    font-family:'Iowan Old Style','Georgia',serif;}
+    font-family:'Iowan Old Style','Georgia',serif;
+    display:flex;flex-direction:column;}
 
-  #layout{position:fixed;top:0;left:0;right:0;bottom:64px;display:flex;}
+  #layout{position:relative;flex:1 1 auto;min-height:0;display:flex;}
   #leftPanel{width:50%;height:100%;position:relative;background:var(--screen);border-right:1px solid #000;}
   #rightPanel{width:50%;height:100%;position:relative;background:#000;}
   #leftPanel canvas,#rightPanel canvas{position:absolute;inset:0;width:100%;height:100%;display:block;}
 
+  /* narrow / portrait screens: stack the two panels instead of splitting them side by side */
+  @media (max-width:760px), (orientation:portrait){
+    #layout{flex-direction:column;}
+    #leftPanel{width:100%;height:50%;border-right:none;border-bottom:1px solid #000;}
+    #rightPanel{width:100%;height:50%;}
+  }
+
   #drop{
-    position:fixed;inset:0;bottom:64px;z-index:5;display:flex;align-items:center;justify-content:center;
+    position:fixed;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;
     background:linear-gradient(to right, var(--screen) 50%, #000 50%);
     transition:opacity .5s ease;
+    padding:16px;
+  }
+  @media (max-width:760px), (orientation:portrait){
+    #drop{background:linear-gradient(to bottom, var(--screen) 50%, #000 50%);}
   }
   #drop.hidden{opacity:0;pointer-events:none;}
   #dropCard{
@@ -33,6 +46,11 @@
     padding:44px 52px;display:flex;flex-direction:column;align-items:center;gap:18px;
     box-shadow:0 24px 60px -24px rgba(0,0,0,0.6);
     animation:cardIn .6s cubic-bezier(.16,1,.3,1) both;
+    max-width:calc(100vw - 32px);
+    box-sizing:border-box;
+  }
+  @media (max-width:480px){
+    #dropCard{padding:32px 28px;gap:14px;}
   }
   @keyframes cardIn{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:translateY(0);}}
   #dropIcon{width:72px;height:44px;}
@@ -41,35 +59,46 @@
   #dropIcon path:nth-child(3){animation-delay:.5s, 1.9s;}
   @keyframes drawIn{to{stroke-dashoffset:0;}}
   @keyframes drift{0%,100%{transform:translateY(0);}50%{transform:translateY(-1.5px);}}
-  #drop h1{font-size:clamp(24px,3.2vw,34px);font-weight:400;margin:0;color:#f3f1ea;letter-spacing:0.01em;}
-  #drop p{margin:0;color:#948f7e;font-size:13.5px;max-width:340px;text-align:center;line-height:1.55;}
+  #drop h1{font-size:clamp(22px,6vw,34px);font-weight:400;margin:0;color:#f3f1ea;letter-spacing:0.01em;}
+  #drop p{margin:0;color:#948f7e;font-size:13.5px;max-width:300px;text-align:center;line-height:1.55;}
   #dropzone{
     margin-top:6px;
-    border:none;border-radius:999px;padding:12px 38px;cursor:pointer;
-    font-size:13px;letter-spacing:0.02em;color:#1c1a15;background:var(--red);
+    border:none;border-radius:999px;padding:14px 40px;cursor:pointer;
+    font-size:14px;letter-spacing:0.02em;color:#1c1a15;background:var(--red);
     transition:transform .15s ease, box-shadow .15s ease, background .15s ease;
     box-shadow:0 6px 20px -8px rgba(195,74,58,0.6);
+    -webkit-tap-highlight-color:transparent;
+    min-height:44px; /* comfortable touch target */
   }
   #dropzone:hover{background:#d15b49;transform:translateY(-1px);box-shadow:0 8px 24px -8px rgba(195,74,58,0.75);}
   #dropzone.drag{background:#d15b49;transform:scale(1.03);}
   #fileInput{display:none;}
 
   #controls{
-    position:fixed;left:0;right:0;bottom:0;height:64px;z-index:6;
+    position:relative;flex:0 0 auto;z-index:6;
     background:#1c1a15;border-top:1px solid #000;
-    padding:9px 22px 10px;display:none;flex-direction:column;gap:7px;justify-content:center;
+    padding:9px 18px calc(10px + env(safe-area-inset-bottom)) 18px;
+    display:none;flex-direction:column;gap:7px;justify-content:center;
   }
   #controls.show{display:flex;}
   #seekRow{display:flex;align-items:center;gap:10px;color:#8b8677;font-size:11px;}
-  #seek{flex:1;-webkit-appearance:none;appearance:none;height:2px;background:#3a362c;border-radius:2px;outline:none;cursor:pointer;}
-  #seek::-webkit-slider-thumb{-webkit-appearance:none;width:11px;height:11px;border-radius:50%;background:var(--red);cursor:pointer;margin-top:-4.5px;}
-  #seek::-moz-range-thumb{width:11px;height:11px;border-radius:50%;background:var(--red);border:none;cursor:pointer;}
-  #seek::-moz-range-track{height:2px;background:#3a362c;border-radius:2px;}
-  #curTime,#durTime{width:36px;text-align:center;}
-  #hudRow{display:flex;align-items:center;gap:10px;color:#f3f1ea;font-size:12px;}
-  #controls button{background:none;border:1px solid #4a4638;color:#f3f1ea;border-radius:3px;padding:5px 11px;font-size:12px;cursor:pointer;font-family:inherit;white-space:nowrap;}
+  #seek{flex:1;-webkit-appearance:none;appearance:none;height:4px;background:#3a362c;border-radius:2px;outline:none;cursor:pointer;touch-action:none;}
+  #seek::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:var(--red);cursor:pointer;margin-top:-7px;}
+  #seek::-moz-range-thumb{width:18px;height:18px;border-radius:50%;background:var(--red);border:none;cursor:pointer;}
+  #seek::-moz-range-track{height:4px;background:#3a362c;border-radius:2px;}
+  #curTime,#durTime{width:36px;text-align:center;flex-shrink:0;}
+  #hudRow{display:flex;align-items:center;gap:8px;color:#f3f1ea;font-size:12px;flex-wrap:wrap;}
+  #controls button{
+    background:none;border:1px solid #4a4638;color:#f3f1ea;border-radius:6px;
+    padding:8px 14px;font-size:13px;cursor:pointer;font-family:inherit;white-space:nowrap;
+    -webkit-tap-highlight-color:transparent;min-height:38px;
+  }
   #controls button:hover{border-color:var(--red);color:var(--red);}
-  #trackName{color:#8b8677;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:260px;}
+  #trackName{color:#8b8677;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px;font-size:11px;}
+  @media (max-width:480px){
+    #trackName{max-width:120px;}
+    #controls button{padding:8px 11px;font-size:12px;}
+  }
 </style>
 </head>
 <body>
@@ -141,6 +170,7 @@ function resize(){
   ctxR.setTransform(DPRR,0,0,DPRR,0,0);
 }
 window.addEventListener('resize', ()=>{ resize(); buildRope(); });
+window.addEventListener('orientationchange', ()=>{ setTimeout(()=>{ resize(); buildRope(); }, 100); });
 resize();
 
 function fmt(s){ if(!isFinite(s)||isNaN(s)) return '0:00'; const m=Math.floor(s/60), sec=Math.floor(s%60); return m+':'+String(sec).padStart(2,'0'); }
@@ -154,11 +184,26 @@ function initMedia(file){
   if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
   if(mediaEl){ mediaEl.pause(); URL.revokeObjectURL(mediaEl.src); mediaEl.remove(); }
 
-  const isVideo = file.type.startsWith('video');
+  const isVideo = file.type.startsWith('video') || /\.(mp4|m4v|mov|webm)$/i.test(file.name);
   mediaEl = document.createElement(isVideo ? 'video' : 'audio');
   mediaEl.src = URL.createObjectURL(file);
   mediaEl.crossOrigin = 'anonymous';
-  mediaEl.style.display = 'none';
+  if(isVideo){
+    // iOS Safari throttles/refuses to play a display:none video — it has to stay
+    // technically "visible" (just off-screen and invisible) or playback silently stalls.
+    // playsinline stops iOS from hijacking it into fullscreen native playback too.
+    mediaEl.setAttribute('playsinline', '');
+    mediaEl.setAttribute('webkit-playsinline', '');
+    mediaEl.style.position = 'fixed';
+    mediaEl.style.left = '-9999px';
+    mediaEl.style.top = '0';
+    mediaEl.style.width = '2px';
+    mediaEl.style.height = '2px';
+    mediaEl.style.opacity = '0';
+    mediaEl.style.pointerEvents = 'none';
+  } else {
+    mediaEl.style.display = 'none';
+  }
   document.body.appendChild(mediaEl);
 
   sourceNode = audioCtx.createMediaElementSource(mediaEl);
@@ -177,7 +222,11 @@ function initMedia(file){
   });
   mediaEl.addEventListener('ended', ()=>{ playPauseBtn.textContent='play'; });
   mediaEl.addEventListener('error', ()=>{
-    trackNameEl.textContent = "couldn't play that file — codec may not be supported in this browser";
+    const codes = {1:'loading was aborted',2:'network error',3:'this browser cannot decode it',4:'format/codec not supported by this browser'};
+    const reason = mediaEl.error ? (codes[mediaEl.error.code] || 'unknown error') : 'unknown error';
+    console.error('Media playback failed:', {name:file.name, mimeType:file.type, errorCode:mediaEl.error?.code, reason});
+    document.getElementById('drop').querySelector('p').textContent =
+      `Couldn't play "${file.name}" (${file.type||'unknown type'}) — ${reason}. Try converting to MP4 (H.264/AAC) or MP3.`;
     dropEl.classList.remove('hidden');
     controls.classList.remove('show');
   });
@@ -185,6 +234,7 @@ function initMedia(file){
   mediaEl.play(); audioCtx.resume();
   trackNameEl.textContent = file.name.replace(/\.[^/.]+$/,'');
   controls.classList.add('show'); playPauseBtn.textContent='pause';
+  requestAnimationFrame(()=>{ resize(); buildRope(); }); // controls bar just took up space — re-measure the panels now that the layout has actually shifted
   dropEl.classList.add('hidden');
   resetHistories(); buildRope();
 }
